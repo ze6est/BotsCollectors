@@ -1,0 +1,56 @@
+using System.Collections;
+using UnityEngine;
+using UnityEngine.Events;
+
+public class ResourcesScanner : MonoBehaviour
+{
+    private const string FoundResource = "FoundResource";
+
+    [SerializeField] private LayerMask _newResourcesMask;
+    [SerializeField] private float _scanRadius;
+    [SerializeField] private float _duration;
+    
+    private Coroutine _scanResourceJob;
+    private bool _isGameWorked;
+
+    public event UnityAction<float, Resource> ResourceFound;
+
+    private void Awake() => 
+        _isGameWorked = true;
+
+    private void OnEnable() =>
+        _scanResourceJob = StartCoroutine(ScanResource());    
+
+    private void OnDisable()
+    {
+        if (_scanResourceJob != null)
+            StopCoroutine(_scanResourceJob);
+    }
+
+    private IEnumerator ScanResource()
+    {
+        WaitForSeconds waitTime = new WaitForSeconds(_duration);
+
+        while (_isGameWorked)
+        {
+            Collider[] colliders = Physics.OverlapSphere(transform.position, _scanRadius, _newResourcesMask);
+            int length = colliders.Length;
+
+            if(length > 0)
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    if (colliders[i].TryGetComponent(out Resource resource))
+                    {
+                        float distanse = Vector3.Distance(transform.position, resource.transform.position);
+
+                        ResourceFound?.Invoke(distanse ,resource);
+                        resource.gameObject.layer = LayerMask.NameToLayer(FoundResource);
+                    }
+                }
+            }
+
+            yield return waitTime;
+        }
+    }
+}
