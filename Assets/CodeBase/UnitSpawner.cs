@@ -31,8 +31,8 @@ public class UnitSpawner : MonoBehaviour
         Vector3 spawnPosition = new Vector3(transform.GetChild(number).position.x, spawnHeight, transform.GetChild(number).position.z);
         unit.transform.position = spawnPosition;        
 
-        CollectingResources collectingResources = unit.GetComponent<CollectingResources>();
-        collectingResources.Construct(_base);
+        TargetSetter targetSetter = unit.GetComponent<TargetSetter>();
+        targetSetter.Construct(_base);
 
         UnitCreated?.Invoke(unit);
     }

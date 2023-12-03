@@ -1,66 +1,49 @@
 using UnityEngine;
 using UnityEngine.Events;
 
-[RequireComponent(typeof(MovementToTarget))]
+[RequireComponent(typeof(TargetSetter))]
 public class CollectingResources : MonoBehaviour
 {
     [SerializeField] private float _liftingHeight;
 
-    private MovementToTarget _movementToTarget;
-    private Resource _resource;
-    private Base _base;
-    private bool _isNotSent = true;
+    private TargetSetter _targetSetter;
+    private Resource _resource;        
 
-    public event UnityAction<Resource> ResourcePassed;
-    public event UnityAction<Base> ResourceRaised;
-    public event UnityAction ResourceDelivered;
-
-    public void Construct(Base @base) =>
-        _base = @base;
+    public event UnityAction<Resource> ResourcePassed;       
+    public event UnityAction<Unit> ResourceDelivered;
 
     private void Awake() => 
-        _movementToTarget = GetComponent<MovementToTarget>();
+        _targetSetter = GetComponent<TargetSetter>();
 
     private void OnEnable()
     {
-        _movementToTarget.ResourceReached += OnResourceReached;
-        _movementToTarget.BaseReached += OnBaseReached;
+        _targetSetter.ResourceReached += OnResourceReached;
+        _targetSetter.BaseReached += OnBaseReached;
     }
 
     private void OnDisable()
     {
-        _movementToTarget.ResourceReached -= OnResourceReached;
-        _movementToTarget.BaseReached -= OnBaseReached;
+        _targetSetter.ResourceReached -= OnResourceReached;
+        _targetSetter.BaseReached -= OnBaseReached;
     }    
+
+    public void CollectResource(Resource resource)
+    {
+        _resource = resource;
+        ResourcePassed?.Invoke(_resource);
+    }
 
     private void OnResourceReached()
     {
         _resource.transform.position += new Vector3(0, _liftingHeight, 0);
         _resource.transform.parent = transform;
-        ResourceRaised?.Invoke(_base);
     }
 
     private void OnBaseReached()
     {
-        ResourceDelivered?.Invoke();
+        Unit unit = GetComponent<Unit>();        
         Destroy(_resource.gameObject);
         _resource = null;
-
-        _isNotSent = true;
+        ResourceDelivered?.Invoke(unit);
     }
-
-    public bool TryCollectResource(Resource resource)
-    {
-        if (_isNotSent)
-        {
-            _isNotSent = false;
-
-            _resource = resource;
-            ResourcePassed?.Invoke(_resource);
-
-            return !_isNotSent;
-        }
-        else
-            return _isNotSent;
-    }    
 }

@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.Events;
 
@@ -14,10 +15,10 @@ public class Base : MonoBehaviour
 
     private UnitSpawner _unitSpawner;
     private ResourcesScanner _resourcesScanner;
-    private Unit[] _units;
-    private Dictionary<float, Resource> _foundResources = new Dictionary<float, Resource>();
-    private Coroutine _trySendUnitForNearestResourceJob;
-    private int _currentUnitNumber;
+    private List<Unit> _unitsFree = new List<Unit>();
+    private List<Unit> _unitsOccupied = new List<Unit>();
+    private Resource _currentResource;
+    private Coroutine _trySendUnitForNearestResourceJob;    
     private bool _isGameWorked;
 
     public float Radius { get; private set; }
@@ -26,9 +27,6 @@ public class Base : MonoBehaviour
 
     private void Awake()
     {
-        int countUnits = transform.childCount;
-        _units = new Unit[countUnits];
-
         _unitSpawner = GetComponent<UnitSpawner>();
         _resourcesScanner = GetComponent<ResourcesScanner>();
         Radius = GetComponent<CapsuleCollider>().radius;
@@ -36,42 +34,22 @@ public class Base : MonoBehaviour
         _isGameWorked = true;
     }
 
-    private void OnEnable()
-    {
+    private void OnEnable() => 
         _unitSpawner.UnitCreated += OnUnitCreated;
-        _resourcesScanner.ResourceFound += OnResourceFound;
+
+    private void Start() => 
         _trySendUnitForNearestResourceJob = StartCoroutine(TrySendUnitForNearestResource());
-    }    
 
     private void OnDisable()
     {
         _unitSpawner.UnitCreated -= OnUnitCreated;
-        _resourcesScanner.ResourceFound -= OnResourceFound;
-        StopCoroutine(_trySendUnitForNearestResourceJob);
+
+        if(_trySendUnitForNearestResourceJob != null)
+            StopCoroutine(_trySendUnitForNearestResourceJob);
     }
 
-    private void OnDestroy()
-    {
-        foreach (Unit unit in _units)
-        {
-            if(unit != null)
-            {
-                CollectingResources collectingResources = unit.GetComponent<CollectingResources>();
-                collectingResources.ResourceDelivered -= OnResourceDelivered;
-            }            
-        }
-    }
-
-    private void OnUnitCreated(Unit unit)
-    {
-        CollectingResources collectingResources = unit.GetComponent<CollectingResources>();
-        collectingResources.ResourceDelivered += OnResourceDelivered;
-        _units[_currentUnitNumber] = unit;
-        _currentUnitNumber++;
-    }
-
-    private void OnResourceFound(float distanse, Resource resource) => 
-        _foundResources.Add(distanse, resource);
+    private void OnUnitCreated(Unit unit) => 
+        _unitsFree.Add(unit);
 
     private IEnumerator TrySendUnitForNearestResource()
     {
@@ -79,39 +57,38 @@ public class Base : MonoBehaviour
 
         while (_isGameWorked)
         {
-            if(_foundResources.Count > 0)
-            {
-                float minDistanceToResource = int.MaxValue;
-                Resource currentResource = null;
-
-                foreach (float distanse in _foundResources.Keys)
-                {
-                    if (minDistanceToResource > distanse)
-                    {
-                        minDistanceToResource = distanse;
-                        currentResource = _foundResources[minDistanceToResource];
-                    }
-                }
-
-                foreach (Unit unit in _units)
-                {
-                    CollectingResources collectingResources = unit.GetComponent<CollectingResources>();
-
-                    if (collectingResources.TryCollectResource(currentResource))
-                    {                        
-                        currentResource.gameObject.layer = LayerMask.NameToLayer(SelectedResource);
-
-                        _foundResources.Remove(minDistanceToResource);
-
-                        break;
-                    }
-                }             
-            }
-
             yield return waitTime;
+
+            if (_currentResource == null)
+                _currentResource = _resourcesScanner.GetResource();
+
+            if (_unitsFree.Count > 0 && _currentResource != null)
+            {
+                Unit unit = _unitsFree.First();
+                _unitsOccupied.Add(unit);
+                _unitsFree.Remove(unit);
+
+                CollectingResources collectingResources = unit.GetComponent<CollectingResources>();
+                collectingResources.ResourceDelivered += OnResourceDelivered;
+                collectingResources.CollectResource(_currentResource);
+
+                _currentResource.gameObject.layer = LayerMask.NameToLayer(SelectedResource);
+                _currentResource = null;
+            }
         }
     }
 
-    private void OnResourceDelivered() => 
+    private void OnResourceDelivered(Unit acceptedUnit)
+    { 
+        Unit freeUnit = _unitsOccupied.First(unit => unit.Number == acceptedUnit.Number);
+
+        CollectingResources collectingResources = freeUnit.GetComponent<CollectingResources>();
+
+        _unitsFree.Add(freeUnit);
+        _unitsOccupied.Remove(freeUnit);
+
         ResourceCollected?.Invoke();
+
+        collectingResources.ResourceDelivered -= OnResourceDelivered;        
+    }
 }

@@ -2,57 +2,37 @@ using System.Collections;
 using UnityEngine;
 using UnityEngine.Events;
 
-[RequireComponent(typeof(CollectingResources))]
-[RequireComponent(typeof(CapsuleCollider))]
+[RequireComponent(typeof(TargetSetter))]
+
 public class MovementToTarget : MonoBehaviour
 {
     [SerializeField] private float _speed;
-    [SerializeField] private float _speedRotation;
-    [SerializeField] private float _offsetToTarget;
-
-    private CollectingResources _collectingResources;    
-    private Vector3 _targetPosition;    
-    private Coroutine _moveToTargetJob;    
-    private float _radius;
-    private float _resourceRadius;
+    [SerializeField] private float _speedRotation;    
+    
+    private TargetSetter _targetSetter;
+    private Vector3 _targetPosition;
+    private Coroutine _moveToTargetJob;
     private float _minDistanceToTargetForAction;
     private bool _isTargetNotReached;
 
-    public event UnityAction ResourceReached;
-    public event UnityAction BaseReached;    
+    public event UnityAction TargetReached;    
 
-    private void Awake()
+    private void Awake() => 
+        _targetSetter = GetComponent<TargetSetter>();
+
+    private void OnEnable() => 
+        _targetSetter.TargetSet += OnTargetSet;
+
+    private void OnDisable() => 
+        _targetSetter.TargetSet -= OnTargetSet;
+
+    private void OnTargetSet(Transform target, float minDistanceToTargetForAction)
     {
-        _collectingResources = GetComponent<CollectingResources>();
-        _radius = GetComponent<CapsuleCollider>().radius;        
-    }
+        _minDistanceToTargetForAction = minDistanceToTargetForAction;
+        StartMoving(target);
+    }    
 
-    private void OnEnable()
-    {
-        _collectingResources.ResourcePassed += OnResourcePassed;
-        _collectingResources.ResourceRaised += OnResourceRaised;
-    }
-
-    private void OnDisable()
-    {
-        _collectingResources.ResourcePassed -= OnResourcePassed;
-        _collectingResources.ResourceRaised -= OnResourceRaised;
-    }
-
-    private void OnResourcePassed(Resource resource)
-    {
-        _resourceRadius = resource.Radius;
-        _minDistanceToTargetForAction = _resourceRadius + _radius + _offsetToTarget;
-        StartMoving(resource.transform);
-    }
-
-    private void OnResourceRaised(Base @base)
-    {
-        _minDistanceToTargetForAction += @base.Radius + _resourceRadius + _offsetToTarget;
-        StartMoving(@base.transform);
-    }
-
-    private void StartMoving(Transform target)
+    public void StartMoving(Transform target)
     {
         _isTargetNotReached = true;
         _moveToTargetJob = StartCoroutine(MoveToTarget(target));
@@ -75,23 +55,15 @@ public class MovementToTarget : MonoBehaviour
 
             if (Vector3.Distance(_targetPosition, transform.position) <= _minDistanceToTargetForAction)
             {
-                if(isResource)                
-                    NotifyAboutReachingTarget(ResourceReached);                
-                else                
-                    NotifyAboutReachingTarget(BaseReached);
+                _isTargetNotReached = false;
+
+                if (_moveToTargetJob != null)
+                    StopCoroutine(_moveToTargetJob);
+
+                TargetReached?.Invoke();
             }
 
             yield return null;
         }
-    }
-
-    private void NotifyAboutReachingTarget(UnityAction action)
-    {
-        _isTargetNotReached = false;
-
-        if (_moveToTargetJob != null)
-            StopCoroutine(_moveToTargetJob);
-
-        action?.Invoke();
-    }
+    }    
 }
